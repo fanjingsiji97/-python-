@@ -1,0 +1,255 @@
+#1月20日，我终于回来了，我发现数据库是真的无聊，现在我在大一，相对了解完全栈后，还是爬虫和=合我胃口
+#我看了一下啊，这个还是很麻烦的，套了很多层url
+#最终，对于我个人当前而言，实践绝对远远高于再漫无目的的学了，既然学什么都有坠入深渊的可能，那为什么不坚持我早已热爱过的爬虫呢？今朝剑指牛仔榜，爬人爬虫还爬天！
+#来♂
+#1.21，deepseek其实也不行嘛
+# 站在一条我喜欢的路上，我说什么也不能放弃，实践！
+#1.21 21.20
+# 好难，好急，好想哭
+#1.22：
+# 明天回家了，今天怎么说呢，其实，能够平静的过完一生就已经很好了，我想，这个第三题应该先爬dom树到详情页再搞
+#i.26,终于把各个小病的网址爬下来了，明天写个函数把各个小病的内容爬下来，转换成文件夹，再洗数据就好了！欧耶
+#2.12 劳资回来了！
+import requests
+from bs4 import BeautifulSoup
+import time
+import os
+import re
+#开始写各个细节网站内容的爬取和清洗1.29.2.2
+# #https://jib.xywy.com/il_sii_9802.htm
+# https://jib.xywy.com/il_sii/neopathy/38.htm
+# https://jib.xywy.com/il_sii/prevent/38.htm
+# https://jib.xywy.com/il_sii/cause/38.htm
+# https://jib.xywy.com/il_sii/symptom/38.htm
+# https://jib.xywy.com/il_sii/inspect/38.htm
+# https://jib.xywy.com/il_sii/diagnosis/38.htm
+# https://jib.xywy.com/il_sii/treat/38.htm
+# https://jib.xywy.com/il_sii/nursing/38.htm
+# https://jib.xywy.com/il_sii/food/38.htm
+#2.2 我靠，这10个url的DOM树都不重样，得逐个击破，大工程啊
+def clean_dirname(name):
+    """使字符串能安全用作 Windows 文件夹名"""
+    if not isinstance(name, str):
+        name = str(name)
+    name = name.strip()
+    # 替换非法字符
+    name = re.sub(r'[\\/*?:"<>|]', '_', name)
+    # 删除末尾的点和空格（Windows 不允许）
+    name = name.rstrip('. ')
+    # 避免空名
+    return name or "未命名"
+def write_into_illness_normal(url, name1, name2, name3):
+    name1=clean_dirname(name1)
+    name2=clean_dirname(name2)
+    name3=clean_dirname(name3)
+    os.makedirs(f"illness/{name1}/{name2}/{name3}", exist_ok=True)
+    introduce_url=f"https://jib.xywy.com/il_sii/gaishu/{url[28:]}"
+    res_introduce = requests.get(introduce_url, headers=headers)
+    res_introduce = res_introduce.text.encode(res_introduce.encoding).decode("GB18030")
+    soup_introduce = BeautifulSoup(res_introduce, "html.parser")
+    div_introduce = soup_introduce.find("div", class_="jib-janj bor clearfix")
+    div_gaishu = div_introduce.find("div", class_="jib-articl-con jib-lh-articl")
+    ph = div_gaishu.find("p")
+    print(ph.text)
+    with open(f"illness/{name1}/{name2}/{name3}/简介.txt", "w",encoding="utf-8") as fp:
+        fp.write(ph.text)
+    divs = div_introduce.find_all("div", class_="mt20 articl-know")
+    div1s = divs[0].find_all("p")
+    with open(f"illness/{name1}/{name2}/{name3}/基本知识.txt", "w",encoding="utf-8") as fp:
+        for s in div1s:
+            if s != div1s[4]:
+                span1 = s.find("span", class_="tr txt-left fl")
+                span2 = s.find("span", class_="fl txt-right")
+                string = f"{span1.text}{span2.text}"
+                fp.write(string)
+                fp.write('\n')
+            else:
+                span1 = s.find("span", class_="tr txt-left fl")
+                span2 = s.find("span", class_="fl txt-right")
+                aa = span2.find_all("a")
+                fp.write(span1.text)
+                for asss in aa:
+                    fp.write(f" {asss.text}")
+def write_into_illness_else(url, name1, name2, name3, name4):
+    name1=clean_dirname(name1)
+    name2=clean_dirname(name2)
+    name3=clean_dirname(name3)
+    name4=clean_dirname(name4)
+    os.makedirs(f"illness/{name1}/{name2}/{name3}/{name4}", exist_ok=True)
+    introduce_url=f"https://jib.xywy.com/il_sii/gaishu/{url[28:]}"
+    res_introduce = requests.get(introduce_url, headers=headers)
+    res_introduce = res_introduce.text.encode(res_introduce.encoding).decode("GBK")
+    soup_introduce = BeautifulSoup(res_introduce, "html.parser")
+    div_introduce = soup_introduce.find("div", class_="jib-janj bor clearfix")
+    div_gaishu = div_introduce.find("div", class_="jib-articl-con jib-lh-articl")
+    ph = div_gaishu.find("p")
+    print(ph.text)
+    with open(f"illness/{name1}/{name2}/{name3}/{name4}/简介.txt", "w",encoding="utf-8") as fp:
+        fp.write(ph.text)
+    divs = div_introduce.find_all("div", class_="mt20 articl-know")
+    div1s = divs[0].find_all("p")
+    with open(f"illness/{name1}/{name2}/{name3}/{name4}/基本知识.txt", "w",encoding="utf-8") as fp:
+        for s in div1s:
+            if s != div1s[4]:
+                span1 = s.find("span", class_="tr txt-left fl")
+                span2 = s.find("span", class_="fl txt-right")
+                string = f"{span1.text}{span2.text}"
+                fp.write(string)
+                fp.write('\n')
+            else:
+                span1 = s.find("span", class_="tr txt-left fl")
+                span2 = s.find("span", class_="fl txt-right")
+                aa = span2.find_all("a")
+                fp.write(span1.text)
+                for asss in aa:
+                    fp.write(f" {asss.text}")
+headers = {
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+}
+base_url="https://jib.xywy.com"
+os.makedirs("main/illness",exist_ok=True)
+url="https://jib.xywy.com/html/neike.html"
+res=requests.get(url,headers=headers)
+print(res)
+res=res.text.encode(res.encoding).decode("GB18030")
+soup=BeautifulSoup(res,"html.parser")
+ul=soup.find("ul",class_="clearfix jbk-nav-list bor f14")
+lis=ul.find_all("li",class_="pr")
+for li in lis:
+    ass=li.find_all("a")
+    print(ass[0].text)
+    for a in ass:#接下来开始跳转网页
+        if a==ass[0]:#这里是各个大科的常见病，内科之于呼吸内科就是大科
+            url=f"{base_url}{a['href']}"
+            print(url)
+            res2=requests.get(url,headers=headers)
+            res2=res2.text.encode(res2.encoding).decode('gb18030')
+            soup2=BeautifulSoup(res2,"html.parser")
+            subjects_name=""
+            try:
+                div=soup2.find("div",class_="jblist-main bor fr")
+                strong=div.find("strong")
+                frequent_name=strong.text
+                print(frequent_name)#内科常见病
+                op=len(frequent_name)-3
+                subjects_name=frequent_name[:op]#内科
+                print(subjects_name)
+                # if not os.path.exists(f"illness/{subjects_name}"):
+                #     os.mkdir(f"illness/{subjects_name}")
+                # if not os.path.exists(f"illness/{subjects_name}/{frequent_name}"):
+                #     os.mkdir(f"illness/{subjects_name}/{frequent_name}")
+                ul=div.find("ul",class_="ks-ill-list clearfix mt5")
+                lists=ul.find_all("li")
+                for li2 in lists:
+                    address=li2.find("a")
+                    level_3_href=address["href"]
+                    print(address.text)
+                    print(level_3_href)
+                    # if not os.path.exists(f"illness/{subjects_name}/{frequent_name}/{address.text}"):
+                    os.makedirs(f"illness/{subjects_name}/{frequent_name}/{address.text}",exist_ok=True)#内科常见病小病
+                    new_href=f"{base_url}{level_3_href}"#这是常见病中的小病网址
+                    write_into_illness_normal(new_href,subjects_name,frequent_name,address.text)
+                    time.sleep(0.1)
+            except:
+                div=soup2.find("div",class_="jblist-bd bor")
+                strong=div.find("strong")
+                frequent_name=strong.text
+                print(frequent_name)#传染科常见病
+                op=len(frequent_name)-3
+                subjects_name=frequent_name[:op]
+                print(subjects_name)
+                # if not os.path.exists(f"illness/{subjects_name}"):
+                #     os.mkdir(f"illness/{subjects_name}")
+                # if not os.path.exists(f"illness/{subjects_name}/{frequent_name}"):
+                #     os.mkdir(f"illness/{subjects_name}/{frequent_name}")              #优化
+                ul=div.find("ul",class_="ks-ill-list clearfix mt10")
+                lists=ul.find_all("li")
+                for li2 in lists:
+                    address=li2.find("a")
+                    level_3_href=address["href"]
+                    print(address.text)
+                    # if not os.path.exists(f"illness/{subjects_name}/{frequent_name}/{address.text}"):
+                    os.makedirs(f"illness/{subjects_name}/{frequent_name}/{address.text}",exist_ok=True)
+                    print(level_3_href)#这是常见病中的小病网址
+                    new_href = f"{base_url}{level_3_href}"
+                    write_into_illness_normal(new_href,subjects_name,frequent_name,address.text)
+                    time.sleep(0.1)
+                # 这里其他病
+                div3 = soup2.find("div", class_="jblist-bd bor mt10 pr")
+                n = div3.find("strong")
+                name = n.text
+                print(name)
+                divs = div3.find_all("div", class_="ks-ill-txt mt20")
+                for divn in divs:
+                    ul1 = divn.find("ul", class_="ks-ill-list clearfix mt10")
+                    bings = ul1.find_all("a")
+                    for bing in bings:
+                        print(bing.text)
+                        print(bing["href"])
+                        os.makedirs(f"illness/{subjects_name}/{n.text}/{bing.text}",exist_ok=True)
+                        new_href = f"{base_url}{bing['href']}"
+                        write_into_illness_normal(new_href,subjects_name,n.text,bing.text)
+        elif a!=ass[0]:         #开始处理“内科”旗下的小科
+            url=f"{base_url}{a['href']}"
+            print(url)
+            res2=requests.get(url,headers=headers)
+            res2=res2.text.encode(res2.encoding).decode('gb18030')
+            soup2=BeautifulSoup(res2,"html.parser")
+            subjects_name = ""
+            div = soup2.find("div", class_="jblist-bd bor")
+            strong = div.find("strong")
+            frequent_name = strong.text
+            print(frequent_name)  # 呼吸内科常见病
+            op = len(frequent_name) - 3
+            subjects_name = frequent_name[:op]#呼吸内科
+            print(subjects_name)
+            # if not os.path.exists(f"illness/{ass[0].text}/{subjects_name}"):
+            #     os.mkdir(f"illness/{ass[0].text}/{subjects_name}")#内科/呼吸内科
+            # if not os.path.exists(f"illness/{ass[0].text}/{subjects_name}/{frequent_name}"):
+            #     os.mkdir(f"illness/{ass[0].text}/{subjects_name}/{frequent_name}")
+
+            ul = div.find("ul", class_="ks-ill-list clearfix mt10")
+            lists = ul.find_all("li")
+            for li2 in lists:
+                address = li2.find("a")
+                level_3_href = address["href"]
+                print(address.text)
+                print(level_3_href)
+                addres=clean_dirname(address.text)
+                os.makedirs(f"illness/{ass[0].text}/{subjects_name}/{frequent_name}/{addres}",exist_ok=True)
+                new_href = f"{base_url}{level_3_href}"
+                write_into_illness_else(new_href, ass[0].text, subjects_name, frequent_name,address.text)
+                # except:
+                #     os.makedirs(f"illness/{ass[0].text}/{subjects_name}/{frequent_name}/未知错误",exist_ok=True)
+                #     new_href = f"{base_url}{level_3_href}"
+                #     write_into_illness_else(new_href, ass[0].text, subjects_name, frequent_name, "未知错误")
+                # 这是常见病中的小病网址
+                time.sleep(0.1)
+                #这里其他病
+            div3=soup2.find("div",class_="fl jblist-con-ill")
+            n=div3.find("strong")
+            name=n.text
+
+            print(name)
+            divs=div3.find_all("div",class_="ks-ill-txt mt20")
+            if not os.path.exists(f"illness/{ass[0].text}/{subjects_name}/{n.text}"):
+                os.mkdir(f"illness/{ass[0].text}/{subjects_name}/{n.text}")
+            for divn in divs:
+                ul1=divn.find("ul",class_="ks-ill-list clearfix mt10")
+                bings=ul1.find_all("a")
+                for bing in bings:
+                    print(bing.text)
+                    print(bing["href"])
+                    try:
+                        if not os.path.exists(
+                                f"illness/{ass[0].text}/{subjects_name}/{n.text}/{bing.text}"):
+                            os.mkdir(f"illness/{ass[0].text}/{subjects_name}/{n.text}/{bing.text}")
+                        new_href = f"{base_url}{bing['href']}"
+                        write_into_illness_else(new_href,ass[0].text, subjects_name, frequent_name, bing.text)
+                    except:
+                        if not os.path.exists(f"illness/{ass[0].text}/{subjects_name}/{n.text}/未知错误"):
+                            os.mkdir(f"illness/{ass[0].text}/{subjects_name}/{n.text}/未知错误")
+                        new_href = f"{base_url}{bing['href']}"
+                        name4="未知错误"
+                        write_into_illness_else(new_href, ass[0].text, subjects_name, n.text, name4)
+    time.sleep(0.1)
