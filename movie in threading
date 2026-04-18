@@ -1,0 +1,111 @@
+from os.path import exists
+#这是作业
+import requests
+from bs4 import BeautifulSoup
+import threading
+from concurrent.futures import ThreadPoolExecutor
+import os
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    "Referer;": ""
+}
+def spider(id):
+    base_url=f"https://ssr1.scrape.center/detail/{id}"
+    res=requests.get(base_url,headers=headers,timeout=10)
+    soup=BeautifulSoup(res.text,'html.parser')
+    div=soup.find('div',id="detail")
+    small_div=div.find_all('div',class_='el-row')
+    # div1=small_div[0].find('div',class_="p-h el-col el-col-24 el-col-xs-16 el-col-sm-12")
+    # a=div1.find('a',class_='router-link-exact-active router-link-active')
+    # h2=a.find('h2')
+    # name=h2.text
+    # print(name)
+    # if not os.path.exists(f"movies/{name}"):
+    #     os.makedirs(f"movies/{name}")#由于有日文名，用电影名取文件名的计划失败
+    header=small_div[1]
+    introducing=small_div[2]
+    actors=small_div[4]
+    picture=small_div[6]
+    div1=header.find('div',class_='el-col el-col-24 el-col-xs-0 el-col-sm-8')
+    appearance=div1.find('img')
+    img_url=appearance['src']
+    src=requests.get(img_url,headers=headers,timeout=10)
+    if not os.path.exists(f'movie_{id}/introducing'):
+        os.makedirs(f'movie_{id}/introducing')
+    with open(f'movie_{id}/introducing/picture.jpg','wb') as fp:
+        fp.write(src.content)
+    with open(f'movie_{id}/introducing/introduction.txt','w',encoding='utf-8') as shit:
+
+        div2 = header.find('div', class_='p-h el-col el-col-24 el-col-xs-16 el-col-sm-12')
+        name = div2.find('h2')
+        div22=div2.find('div',class_='categories')
+        characters=div22.find_all('span')
+        shit.write(name.text)
+        shit.write('\n')
+        for i in characters:
+            shit.write(f"{i.text}")
+        div23=div2.find_all('div',class_='m-v-sm info')
+        spans=div23[0].find_all('span')
+        shit.write('\n')
+        for i in spans:
+            shit.write(i.text)
+        shit.write('\n')
+        span=div23[1].find('span')
+        shit.write(span.text)
+        shit.write('\n')
+        div3=div2.find('div',class_="drama")
+        p=div3.find('p')
+        shit.write("剧情简介：")
+        shit.write(p.text)
+        div4=header.find('div',class_="el-col el-col-24 el-col-xs-8 el-col-sm-4")
+        pp=div4.find('p',class_="score m-t-md m-b-n-sm")
+        data=div4.find('div',class_="el-rate")
+        star=data['aria-valuenow']
+        shit.write('\n')
+        shit.write(f"评分:{pp.text}")
+        shit.write('\n')
+        shit.write(f"豆瓣:{star}星")
+    if not os.path.exists(f'movie_{id}/director'):
+        os.makedirs(f'movie_{id}/director')
+    direct=small_div[2].find('div',class_="director el-col el-col-4")
+    divD=direct.find("div",class_="el-card__body")
+    img=divD.find('img')
+    img1_url=img['src']
+    src=requests.get(img1_url,headers=headers,timeout=10)
+    with open(f'movie_{id}/director/ass.jpg','wb')as shit:
+        shit.write(src.content)
+    with open(f'movie_{id}/director/name','w',encoding='utf-8')as fuck:
+        ppp=divD.find('p')
+        fuck.write(ppp.text)
+    divA=actors.find_all('div',class_="actor el-col el-col-4")
+    for i in divA:
+        c=i.find('div',class_="el-card__body")
+        image=c.find('img')
+        img_src=image['src']
+        src=requests.get(img_src,headers=headers,timeout=10)
+        name=c.find_all('p')
+        if not os.path.exists(f'movie_{id}/actors/{name[0].text}'):
+            os.makedirs(f'movie_{id}/actors/{name[0].text}')
+        with open(f'movie_{id}/actors/{name[0].text}/who.txt','w',encoding='utf-8')as k:
+            k.write(f"who:{name[1].text}")
+        with open(f'movie_{id}/actors/{name[0].text}/sb.jpg','wb')as sb:
+            sb.write(src.content)
+    divC=picture.find_all('div',class_='photo el-col el-col-3')
+    o=1
+    for i in divC:
+        ima=i.find('img')
+        url=ima['src']
+        src=requests.get(url,headers=headers,timeout=10)
+        if not os.path.exists(f'movie_{id}/剧照'):
+            os.makedirs(f'movie_{id}/剧照')
+        with open(f'movie_{id}/剧照/图片{o}.jpg','wb')as pic:
+            pic.write(src.content)
+        o+=1
+def shit(k):
+    k0=k*5+1
+    k1=k0-5
+    for i in range(k1,k0):
+        spider(i)
+        print(f'movie{i} is over')
+with ThreadPoolExecutor(max_workers=20)as nigga:
+    nigga.map(shit,[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20])
