@@ -1,0 +1,98 @@
+import json
+import pymysql
+import pandas
+from lxml import etree
+import requests
+import time
+import random
+url="http://bang.dangdang.com/books/bestsellers"
+all = []
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+}
+count=0
+res=requests.get(url,headers=headers)
+tree=etree.HTML(res.text)
+title=tree.xpath('//title/text()')
+ul = tree.xpath("//ul[contains(@class, 'bang_list')]/li")
+for li in ul[3:8]:
+    rank=li.xpath('.//div[contains(@class,"list_num")]/text()')
+    href=li.xpath('.//div[@class="pic"]/a/@href')[0]
+    name=li.xpath('.//div[@class="name"]/a/@title')[0]
+    comment=li.xpath('.//div[@class="star"]/a/text()')[0]
+    recommend = li.xpath('.//div[@class="star"]/span/text()')[0]
+    combo=li.xpath('.//div[@class="publisher_info"]')
+    author=combo[0].xpath('.//a/text()')[0]
+    date=combo[1].xpath('.//span/text()')
+    if date !=[]:
+        date=date[0]
+    where=combo[1].xpath('.//a/text()')[0]
+    price_now=li.xpath('.//div[@class="price"]/p/span[@class="price_n"]/text()')[0]
+    # price_before=li.xpath('.//div[@class="price"]/p/span[@class="price_r"]/text()')[0]
+    # discount=li.xpath('.//div[@class="price"]/p/span[@class="price_s"]/text()')[0]
+    mislead=requests.get(href,headers=headers)
+    DOMtree=etree.HTML(mislead.text)
+    introduce=DOMtree.xpath('//*[@id="product_info"]/div[1]/h2/span[1]/text()')[0].strip()
+    with open(f'{name}.txt','w',encoding='utf-8')as fp:
+        fp.write(f"排名:{rank}\n")
+        fp.write(f"详情页:{href}\n")
+        fp.write(f"名称:{name}\n")
+        fp.write(f"评论:{comment}\n")
+        fp.write(f"推荐:{recommend}\n")
+        fp.write(f"作者:{author}\n")
+        fp.write(f"发布日期:{date}\n")
+        fp.write(f"出版社:{where}\n")
+        if introduce=='':
+            fp.write(f"简介:屁都没有")
+        else:
+            fp.write(f"简介:{introduce}")
+
+
+    data={"排名":rank,"详情页":href,"名称":name,"评论":comment,"推荐":recommend,"作者":author,"发布日期":date,"出版社":where}
+    all.append(data)
+
+
+
+    with open('test.json','a',encoding='utf-8')as f:
+        json.dump(data,f,indent=4,ensure_ascii=False)
+
+    db=pymysql.connect(host="127.0.0.1", port=3306, user="root", password="1234")
+    cursor=db.cursor()
+    sql="""
+    create database if not exists fuck_you default character set utf8mb4
+    """
+    cursor.execute(sql)
+    cursor.execute("    use fuck_you")
+    db2= pymysql.connect(host="127.0.0.1", port=3306, user="root", password="1234",database="fuck_you")
+    cursor=db2.cursor()
+    cnm="""
+    create table if not exists books(
+    id int primary key auto_increment,
+    book_name varchar(255),
+    author varchar(255),
+    publish_time varchar(255),
+    publisher varchar(255),
+    comment varchar(255),
+    introduce varchar(255),
+    recommend varchar(255),
+    url varchar(255)
+    )
+    """
+    cursor.execute(cnm)
+    insert_sql = """
+        INSERT INTO books (book_name, author, publish_time, publisher, comment, introduce, recommend, url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    try:
+        cursor.execute(insert_sql, (name, author, date, where, comment, introduce, recommend, href))
+        db2.commit()
+        print(f"{name} 保存成功")
+    except Exception as e:
+        print(f"插入失败：{e}")
+        db2.rollback()
+    print(f"{name} is over")
+    count+=1
+    time.sleep(random.randint(3,5))
+df=pandas.DataFrame(all)
+df.to_csv('book.csv',encoding='utf-8-sig',index=False)
+print(f"It`s all over,totally {count} books are uploaded")
