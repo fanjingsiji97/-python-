@@ -1,0 +1,236 @@
+import random
+import requests
+import time
+import json
+import string
+import hashlib
+import datetime
+import string
+KEY="k8tUyS$m"
+import os#4.16日，我居然傻乎乎地以为我被ban是因为sign算法
+if not os.path.exists('project'):
+    os.makedirs('project')
+def get_realtime_range(days=7):
+    # 结束时间：当前时刻（实时）
+    end = datetime.datetime.now()
+    end_str = end.strftime('%Y%m%d%H%M%S')
+    # 开始时间：往前推 days 天
+    start = end - datetime.timedelta(days=days)
+    start_str = start.strftime('%Y%m%d%H%M%S')
+    return start_str, end_str
+def generate_nonce(length=16):
+    chars = "zxcvbnmlkjhgfdsaqwertyuiop0987654321QWERTYUIOPLKJHGFDSAZXCVBNM"
+    return ''.join(random.choices(chars, k=length))
+
+import urllib.parse
+
+def to_js_str(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
+
+def qf(params):
+    if not params:
+        return ""
+    items = []
+    for k, v in params.items():
+        enc_k = urllib.parse.quote(str(k), safe='')
+        if isinstance(v, list):
+            for item in v:
+                enc_v = urllib.parse.quote(to_js_str(item), safe='')
+                items.append(f"{enc_k}={enc_v}")
+        else:
+            enc_v = urllib.parse.quote(to_js_str(v), safe='')
+            items.append(f"{enc_k}={enc_v}")
+    items.sort()
+    return "&".join(items)
+def generate_signature(params, timestamp, nonce):
+    r_encoded = qf(params)                # 编码后的字符串，如 "a=1&b=2%20"
+    r_decoded = urllib.parse.unquote(r_encoded)
+    sign_str = nonce + KEY + r_encoded + timestamp
+    return hashlib.sha256(sign_str.encode()).hexdigest()
+def single_message(page):
+    try:
+        url = "https://ygp.gdzwfw.gov.cn/ggzy-portal/search/v2/items"
+        cookies = {
+            "_horizon_uid": "1ff05f5b-25cf-40a4-ab30-d980ff6266ef",
+            "_horizon_sid": "a5afb56d-c299-405e-8480-065983ac7465"  # 改成和 nodeid_hunter 一样
+        }
+        s,e=get_realtime_range(days=30)
+        data = {
+            "type": "trading-type",
+            "openConvert": False,
+            "keyword": "",
+            "siteCode": "44",
+            "secondType": "D",
+            "tradingProcess": "",
+            "thirdType": "[]",  # 注意这里是字符串 "[]"
+            "projectType": "",
+            "publishStartTime": f"{s}",
+            "publishEndTime": f"{e}",
+            "pageNo": f"{page}",
+            "pageSize": 10
+        }
+        timestamp=str(int(time.time() * 1000))
+        nonce = generate_nonce()
+        header = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Connection": "keep-alive",
+            "Referer": "https://ygp.gdzwfw.gov.cn/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+            "X-Dgi-Req-App": "ggzy-portal",
+            "X-Dgi-Req-Nonce": nonce,
+            "X-Dgi-Req-Signature":generate_signature(data,timestamp,nonce) ,
+            "X-Dgi-Req-Timestamp": timestamp,
+            "sec-ch-ua": "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\""
+        }
+        headers = header
+        response = requests.post(url, headers=headers, cookies=cookies, json=data)
+        print(f"大页面开启状况:{response}")
+        res=response.json()
+        data=res['data']
+        pd=data['pageData']
+        for i in pd:
+            # print(i)
+            bizcode = i["tradingProcess"]
+            siteCode = i["siteCode"]
+            version = i["edition"]
+            tradingType = i["noticeSecondType"]
+            projectCode = i["projectCode"]
+            noticeId=i["noticeId"]
+            nodes = nodeid_hunter(siteCode, tradingType, bizcode, projectCode)
+            if nodes:#有子节点
+                for node in nodes:
+                    # if not os.path.exists(f"project/{i['noticeTitle']}"):
+                    #     os.makedirs(f"project/{i['noticeTitle']}")
+                    op=detail( node['nodeId'], version, tradingType, noticeId, bizcode,projectCode, siteCode)
+                    title = op.get('title')
+                    if title not in (None, ''):
+                        # 继续
+                        # print(op)
+                        tradingNoticeColumnModelList = op['tradingNoticeColumnModelList']
+                        rest = tradingNoticeColumnModelList[1]
+                        text=rest['richtext']
+                        # print(text)
+                        with open(f"project/{i['noticeTitle']}.txt",'w',encoding='utf-8') as u:
+                            u.write(f"公告标题:{i['noticeTitle']}\n")
+                            u.write(f"公告发布时间:{i['publishDate']}\n")
+                            u.write(f"来源:广东政府采购智慧云平台他妈政府采购-{i['datasetName']}\n")
+                            u.write(f"公告性质:{i['noticeNature']}\n")
+                            u.write(f"公告编号:{i['docId'][:32]}\n")
+                            u.write(f"公告内容:{text}\n")
+                            print(f"{i['noticeTitle']} is over")
+                # print(
+                #     f"公告类型: {i['datasetName']}, 标题: {i['noticeTitle']}, 发布时间: {i['publishDate']}, 来源: {i['pubServicePlat']}")
+
+            # else:#自己就是子节点
+            #     print(
+            #         f"公告类型: {i['datasetName']}, 标题: {i['noticeTitle']}, 发布时间: {i['publishDate']}, 来源: {i['pubServicePlat']}")
+            # # for i in nodes:
+            #     nodeName=i['nodeName']
+            #     nodeId=i['nodeId']
+            #     bizCode=i['selectedBizCode']
+            #     # print(f"{nodeName}")
+            #     detail(nodeName,nodeId,version,tradingType,noticeId,bizCode,projectCode,siteCode)
+    except Exception as e:
+        print(f"We are done,{e}")
+        return None
+            # print('\n')
+            # 4.12今天只爬到了那些本身就为父节点的节点，在这之后，我还需要爬取那些本身不为父节点的公告，以及爬取父节点旗下的子节点
+def nodeid_hunter(sitecode,tradingType,bizcode,projectcode):
+    nonce = generate_nonce()
+    timestamp=str(int(time.time() * 1000))
+    base_url="https: // ygp.gdzwfw.gov.cn / ggzy - portal / center / apis / trading - notice / new / nodeList"
+
+    cookies = {
+        "_horizon_uid": "1ff05f5b-25cf-40a4-ab30-d980ff6266ef",
+        "_horizon_sid": "a5afb56d-c299-405e-8480-065983ac7465"  # 改成和 nodeid_hunter 一样
+    }
+    params = {
+        "siteCode":"441500", #f"{sitecode}",这是动态参数
+        "tradingType": f"{tradingType}",#,"D",现在我们用一个特定的项目的参数，理论应该是错的
+        "bizCode":f"{bizcode}",# "3811",
+        "projectCode":f"{projectcode}"   #"8a7ea7239d7665ea019d89e4a5a82846"
+    }
+    url = "https://ygp.gdzwfw.gov.cn/ggzy-portal/center/apis/trading-notice/new/nodeList"
+    header = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Connection": "keep-alive",
+        "Referer": "https://ygp.gdzwfw.gov.cn/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "X-Dgi-Req-App": "ggzy-portal",
+        "X-Dgi-Req-Nonce": nonce,
+        "X-Dgi-Req-Signature":generate_signature(params,timestamp,nonce) ,
+        "X-Dgi-Req-Timestamp": timestamp,
+        "sec-ch-ua": "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\""
+    }
+    headers = header
+    response = requests.get(url, headers=headers, cookies=cookies, params=params)
+    print(f"小页面开启状况:{response}")
+    res=response.json()
+    res=res['data']
+    return res
+def detail(nodeId,version,tradingType,noticeId,bizCode,projectCode,siteCode):
+    cookies = {
+        "_horizon_uid": "1ff05f5b-25cf-40a4-ab30-d980ff6266ef",
+        "_horizon_sid": "a5afb56d-c299-405e-8480-065983ac7465"  # 改成和 nodeid_hunter 一样
+    }
+    timestamp=str(int(time.time() * 1000))
+    url = "https://ygp.gdzwfw.gov.cn/ggzy-portal/center/apis/trading-notice/new/detail"
+    params = {
+        "nodeId": f"{nodeId}",
+        "version": f"{version}",
+        "tradingType": f"{tradingType}",
+        "noticeId": f"{noticeId}",
+        "bizCode": f"{bizCode}",
+        "projectCode": f"{projectCode}",
+        "siteCode": f"{siteCode}",
+    }
+    nonce=generate_nonce()
+    header = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Connection": "keep-alive",
+        "Referer": "https://ygp.gdzwfw.gov.cn/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "X-Dgi-Req-App": "ggzy-portal",
+        "X-Dgi-Req-Nonce": nonce,
+        "X-Dgi-Req-Signature":generate_signature(params,timestamp,nonce) ,
+        "X-Dgi-Req-Timestamp": timestamp,
+        "sec-ch-ua": "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\""
+    }
+    response = requests.get(url, headers=header, cookies=cookies, params=params)
+    res=response.json()
+    res=res['data']
+    # print(res)
+    return res
+i=1
+# single_message(1)
+while(1):
+    if(single_message(i)!=None):
+        i+=1
+        time.sleep(random.randint(2,9))
+    else:
+        print("艾迟吃醋")
+        i+=1
+        continue
+single_message(4)
+#4.24 我实在无法对抗反爬，只好妥协完成任务，把等待时间延长，但是后期怎么用多线程呢？proxy？有待考究
+#总之，7.27，任务完成
