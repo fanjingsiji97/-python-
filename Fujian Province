@@ -1,0 +1,250 @@
+import random
+import time
+import hashlib
+import json
+import requests
+from datetime import datetime,timedelta
+from typing import Dict, Any, Optional
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+import base64
+import os
+if not os.path.exists("program"):
+    os.makedirs("program")
+key_hex="EB444973714E4A40876CE66BE45D5930"
+iv_str="B5A8904209931867"
+timestamp=int(time.time() * 1000)
+def decrypt_data(encrypted_b64: str, key_str: str, iv_str: str) -> str:
+    key = key_str.encode('utf-8')   # 直接 UTF-8 编码
+    iv = iv_str.encode('utf-8')
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    encrypted_bytes = base64.b64decode(encrypted_b64)
+    decrypted_padded = cipher.decrypt(encrypted_bytes)
+    decrypted = unpad(decrypted_padded, AES.block_size)
+    return decrypted.decode('utf-8')
+# ---------------------------- 签名相关函数 ----------------------------
+def clean_empty_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    """删除值为空字符串或 None 的字段，模拟前端 d(t) 中的预处理"""
+    return {k: v for k, v in params.items() if v != "" and v is not None}
+
+def sort_keys_ignore_case(keys: list) -> list:
+    """模拟前端的 l 函数：不区分大小写的升序排序"""
+    return sorted(keys, key=lambda x: x.upper())
+
+def u(params: Dict[str, Any]) -> str:
+    """
+    模拟前端 u(t) 函数：
+    1. 按键名不区分大小写排序
+    2. 拼接 key + value
+    3. 若 value 是 dict/list，先 JSON.stringify
+    """
+    cleaned = clean_empty_params(params)
+    keys = sort_keys_ignore_case(list(cleaned.keys()))
+    parts = []
+    for k in keys:
+        v = cleaned[k]
+        if isinstance(v, (dict, list)):
+            # ensure_ascii=False 保留中文，separators 去除空格
+            parts.append(k + json.dumps(v, separators=(',', ':'), ensure_ascii=False))
+        else:
+            parts.append(k + str(v))
+    return ''.join(parts)
+
+def generate_portal_sign(params: Dict[str, Any], salt: str = "B3978D054A72A7002063637CCDF6B2E5") -> str:
+    """
+    生成 portal-sign
+    公式：sign = MD5( salt + u(params) ).toLowerCase()
+    """
+    raw = salt + u(params)
+    return hashlib.md5(raw.encode('utf-8')).hexdigest().lower()
+
+# ---------------------------- 参数构造函数 ----------------------------
+# def build_trade_payload(page_no: int = 1, page_size: int = 20, kind: str = "GCJS", ggtype: str = "1") -> Dict[str, Any]:
+#     """
+#     构造 TradeInfo 请求的 payload（t）
+#     total 先固定为 0，后续可从响应中获取真实值更新
+#     """
+#     now = datetime.now()
+#     begin_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+#     payload = {
+#         "BeginTime": begin_today.strftime("%Y-%m-%d %H:%M:%S"),
+#         "EndTime": now.strftime("%Y-%m-%d %H:%M:%S"),
+#         "GGTYPE": ggtype,
+#         "KIND": kind,
+#         "pageNo": page_no,
+#         "pageSize": page_size,
+#         "timeType": "1",
+#         "total": 0,
+#         "ts": int(time.time() * 1000),
+#         # 以下为固定空值，可保留
+#         "AREACODE": "",
+#         "M_PROJECT_TYPE": "",
+#         "PROTYPE": "",
+#         "createTime": []
+#     }
+#     return payload
+def build_trade_payload(page_no: int = 1, page_size: int = 20, kind: str = "GCJS", ggtype: str = "1", days_ago: int = 30):
+    # 结束时间：当前时刻
+    end_time = datetime.now()
+    # 开始时间：当前时刻往前推 days_ago 天
+    start_time = end_time - timedelta(days=days_ago)
+    # 可选：如果你想保留开始时间为当天0点，可去掉下面注释；但为了涵盖整月，通常直接用 start_time
+    # start_time = start_time.replace(hour=0, minute=0, second=0, microsecond=0)
+    payload = {
+        "BeginTime": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "EndTime": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "GGTYPE": ggtype,
+        "KIND": kind,
+        "pageNo": page_no,
+        "pageSize": page_size,
+        "timeType": "30",   # 注意：timeType 可能需要改为 30（近一个月）或根据接口文档调整
+        "total": 0,
+        "ts":int(time.time() * 1000),
+        "AREACODE": "",
+        "M_PROJECT_TYPE": "",
+        "PROTYPE": "",
+        "createTime": []
+    }
+    return payload
+
+# ---------------------------- 请求发送函数 ----------------------------
+def fetch_trade_info(page_no: int = 1, page_size: int = 20, kind: str = "GCJS", ggtype: str = "1",
+                     salt: str = "B3978D054A72A7002063637CCDF6B2E5",
+                     session_cookie: Optional[str] = None) -> requests.Response:
+    """
+    发送 TradeInfo 请求，返回原始响应对象（未解密）
+    需要提供有效的 ASP.NET_SessionId cookie（可从浏览器复制）
+    """
+    # 1. 构造参数
+    payload = build_trade_payload(page_no, page_size, kind, ggtype)
+    # 2. 生成签名
+    sign = generate_portal_sign(payload, salt)
+    # 3. 固定请求头
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Connection": "keep-alive",
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://ggzyfw.fj.gov.cn",
+        "Referer": "https://ggzyfw.fj.gov.cn/business/list/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "portal-sign": sign,
+        "sec-ch-ua": '"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"'
+    }
+    cookies = {}
+    if session_cookie:
+        cookies["ASP.NET_SessionId"] = session_cookie
+
+    url = "https://ggzyfw.fj.gov.cn/FwPortalApi/Trade/TradeInfo"
+    response = requests.post(url, headers=headers, cookies=cookies, json=payload)
+    return response
+def loading(cid,name_,ts,type_):
+    # url="https://ggzyfw.fj.gov.cn/business/detail"
+    payload = {
+        "cid":f"{cid}",
+        "name": f"{name_}",
+        "ts" : f"{ts}",
+        "type" :f"{type_}"# 请根据实际接口要求填写具体项目名称或ID，或补充其他必需字段
+    }
+    sign=generate_portal_sign(payload,"B3978D054A72A7002063637CCDF6B2E5")
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Connection": "keep-alive",
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://ggzyfw.fj.gov.cn",
+        "Referer": "https://ggzyfw.fj.gov.cn/business/detail?name=%E9%97%BD%E5%8F%B0%E8%9E%8D%E5%90%88%E8%8A%B1%E5%8D%89%E4%BA%A7%E4%B8%9AAI%E7%BB%84%E5%9F%B9%E5%9F%BA%E5%9C%B0%E9%A1%B9%E7%9B%AE-%E6%8B%9B%E6%A0%87%E5%85%AC%E5%91%8A&cid=281821&type=GCJS",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "portal-sign": sign,  # ⚠️ 签名可能过期，请从浏览器重新获取
+        "sec-ch-ua": '"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"'
+    }
+    cookies = {
+        "ASP.NET_SessionId": "s13mkmvne0fmpodfii0clke0"  # ⚠️ 会话ID也可能失效
+    }
+    url = "https://ggzyfw.fj.gov.cn/FwPortalApi/Trade/TradeInfoDetail"
+    # 发送POST请求（自动JSON序列化）
+    response = requests.post(url, headers=headers, cookies=cookies, json=payload)
+    cue=decrypt_data(response.json()['Data'],key_hex,iv_str)
+    datas=json.loads(cue)['BaseInfo']
+    BID_SECTION_CODES=datas['BID_SECTION_CODES']
+    DOC_GET_END_TIME=datas['DOC_GET_END_TIME']
+    BID_DOC_REFER_END_TIME=datas['BID_DOC_REFER_END_TIME']
+    print(BID_SECTION_CODES)
+    with open(f"program/{NAME}.txt", 'a', encoding="utf8") as fp:
+        fp.write(f"招标编号:{BID_SECTION_CODES}\n")
+        fp.write(f"标书售卖截止时间:{DOC_GET_END_TIME}\n")
+        fp.write(f"保证金截止时间:{DOC_GET_END_TIME}\n")
+        fp.write(f"质疑截止时间:{DOC_GET_END_TIME}\n")
+        fp.write(f"投标截止时间:{BID_DOC_REFER_END_TIME}\n")
+def content(M_ID,TYPE,ts,NAME):
+    payload = {
+        "type": TYPE,
+        "m_id": M_ID,
+        "ts":  ts # 时间戳，可能需要动态生成
+    }
+    sign=generate_portal_sign(payload,"B3978D054A72A7002063637CCDF6B2E5")
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Connection": "keep-alive",
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://ggzyfw.fj.gov.cn",
+        "Referer": "https://ggzyfw.fj.gov.cn/business/detail?name=%E9%97%BD%E5%8F%B0%E8%9E%8D%E5%90%88%E8%8A%B1%E5%8D%89%E4%BA%A7%E4%B8%9AAI%E7%BB%84%E5%9F%B9%E5%9F%BA%E5%9C%B0%E9%A1%B9%E7%9B%AE-%E6%8B%9B%E6%A0%87%E5%85%AC%E5%91%8A&cid=281821&type=GCJS",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "portal-sign": sign,  # ⚠️ 签名可能有时效性，请从浏览器重新获取
+        "sec-ch-ua": '"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"'
+    }
+
+    cookies = {
+        "ASP.NET_SessionId": "s13mkmvne0fmpodfii0clke0"  # ⚠️ 会话ID可能过期
+    }
+
+    url = "https://ggzyfw.fj.gov.cn/FwPortalApi/Trade/TradeInfoContent"
+    response = requests.post(url, headers=headers, cookies=cookies, json=payload)
+    cue=decrypt_data(response.json()['Data'],key_hex,iv_str)
+    datas=json.loads(cue)['Contents']
+    with open(f"program/{NAME}.txt", 'a', encoding="utf8") as fp:
+        fp.write(f"公告内容:{datas}\n")
+    print(datas)
+# ---------------------------- 使用示例 ----------------------------
+if __name__ == "__main__":
+    # 从浏览器复制一个有效的 ASP.NET_SessionId
+    my_cookie = "s13mkmvne0fmpodfii0clke0"
+    i=0# 请替换为实际有效值
+    while(1):
+        i+=1
+        resp = fetch_trade_info(page_no=i, session_cookie=my_cookie)
+        resp=resp.json()
+        data=decrypt_data(resp['Data'],key_hex,iv_str)
+        Table=json.loads(data)['Table']
+        for k in Table:
+            print(k)
+            NAME=k['NAME']
+            TITLE=k['TITLE']
+            PLATFORM_NAME=k['PLATFORM_NAME']
+            TM1=k['TM1']
+            M_ID=k['M_ID']
+            KIND=k['KIND']
+            M_PROJECT_TYPE=k['M_PROJECT_TYPE']
+            ts=int(time.time() * 1000)
+            loading(M_ID,NAME,ts,KIND)
+            content(M_ID,M_PROJECT_TYPE,ts,NAME)
+            time.sleep(random.randint(4,9))
+            with open(f"program/{NAME}.txt",'a',encoding="utf8")as fp:
+                fp.write(f"标题:{NAME}-{TITLE}-{TM1}\n")
+                fp.write(f"交易平台:{PLATFORM_NAME}\n")
