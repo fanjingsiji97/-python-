@@ -1,0 +1,49 @@
+import random
+from time import sleep
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+import requests
+headers = {
+        'Referer': 'https://www.pearvideo.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+options = webdriver.ChromeOptions()
+prefs = {"download.default_directory": r"D:\mycraft\pycharmProjects\test\维特鲁姆训练营\day7\视频们"}
+options.add_experimental_option("prefs", prefs)
+web= webdriver.Chrome(options=options)
+web.get('https://www.pearvideo.com/popular')
+for i in range(0,8):
+    web.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    sleep(0.2)
+s=WebDriverWait(web,20).until(
+    EC.element_to_be_clickable((By.CSS_SELECTOR,'.popularem-title'))
+)
+vs=web.find_elements(By.XPATH,'/html/body/div[2]/div/ul/li')
+for v in vs:#全爬了
+    o=v.find_element(By.CSS_SELECTOR,'.popularem-title')
+    name=o.text
+    print(f"开始下载:{name}")
+    main_handle = web.current_window_handle
+    v.find_element(By.XPATH,'.//a/div').click()
+    handles = web.window_handles
+    for handle in handles:
+        if handle != main_handle:
+            web.switch_to.window(handle)
+            break
+    url=web.find_element(By.TAG_NAME,'video').get_attribute('src')
+    resp = requests.get(url, headers=headers, stream=True)
+    if resp.status_code == 200:
+        filename = f"视频们/video_{name}.mp4"  # 需要对标题做文件名字符清洗
+        with open(filename, 'wb') as f:
+            for chunk in resp.iter_content(8192):
+                f.write(chunk)
+        print(f"下载完成: {filename}")
+    else:
+        print(f"下载失败，状态码 {resp.status_code}")
+    current = web.current_window_handle
+    if current != main_handle:
+        web.close()  # 关闭详情页
+    web.switch_to.window(main_handle)  # 确保切回主窗口
+    sleep(random.randint(2,4))
